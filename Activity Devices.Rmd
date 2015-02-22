@@ -3,59 +3,60 @@ title: "Predict Weight Lifting Quality based on Activity Monitors"
 output: html_document
 ---
 
-# Executive Summary
+### Executive Summary
 
-This project aims to predict the quality of weight lifting exercises based on activity monitors. It does so by using machine learning techniques on a data set provided by http://groupware.les.inf.puc-rio.br/har. The variable we are trying to predict had 5 possible values (A, B, C, D or E) with A denoting that the activity took place correctly and the other 4 meaning that there was a specific error in how the activity took place. 
+This project aims to predict the quality of weight lifting exercises based on activity monitors. It does so by using machine learning techniques on a data set provided by http://groupware.les.inf.puc-rio.br/har. The variable we are trying to predict has 5 possible values (A, B, C, D or E) with A denoting that the activity took place correctly and the other 4 meaning that there was a specific error in how the activity took place. 
 
-We tried 3 models and the results for the best of them (based on cross-validation) were very promising. This proved to be true when we submitted the 20 predictions to Coursera as all of them were correct.
+We tried 4 models and the results for the best of them (based on cross-validation) were very promising. This proved to be true when we submitted the 20 predictions to Coursera as all of them were correct.
 
-# Data
+### Data
 
 The data comes from accelerometers on the belt, forearm, arm, and dumbell of 6 participants as they were performing barbell lifts. They were asked to perform the exercises in 5 different ways (variable *classe*), one of them being the correct one and the other ones being worng in specific aspects.
 
 We start with preparing our R environment and exploring the data structure.
 
-### Load libraries and Data set
-```{r, echo=FALSE}
+#### Load libraries and Data set
+```{r, results='hold'}
 library(randomForest)
 library(caret)
+set.seed(12345)
 training_loaded <- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", na.strings = c(" ","","NA"))
 testing_loaded <- read.csv("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", na.strings = c(" ","","NA"))
 ```
 
-We then look at our training data set.
+We then look at our data sets.
 
-### Structure
+#### Structure (first 30 columns)
 ``` {r}
-str(training_loaded)
+str(training_loaded[1:30])
 ```
 
-### First few rows
+#### First few rows and columns
 ``` {r}
-head(training_loaded)
+head(training_loaded[,1:30])
 ```
 
-### Size
+#### Size
 ``` {r}
 dim(training_loaded)
+dim(testing_loaded)
 ```
 
-
-### NA Values Investigation
+#### NA Values Investigation
 ``` {r}
-hist((colSums(sapply(training_loaded, is.na))/dim(training_loaded)[1]))
+hist((colSums(sapply(training_loaded, is.na))/dim(training_loaded)[1]), main="NA dominated columns", xlab="% of NAs in Column")
 ```
 
-As we can see from the histogram above, there are many columns (~100) that have primarily been populated with NA values. We have decided to exclude these from our model as they do not provide any signal. We have also decided to exclude the first 7 columns that do not provide accelerometer data. The code below, removes the columns according to the criteria laid here.
+As we can see from the histogram above, there are many columns (~100) that have primarily been populated with NA values. We have decided to exclude these from our model as they do not provide any signal. We have also decided to exclude the first 7 columns that do not provide accelerometer data.
 
 ```{r}
 training <- training_loaded[,(colSums(sapply(training_loaded, is.na))/dim(training_loaded)[1]) < 0.9][-(1:7)]
 evaluation <- testing_loaded[,(colSums(sapply(training_loaded, is.na))/dim(training_loaded)[1]) < 0.9][-(1:7)]
 ```
 
-# Model Approach and Implementation
+### Model Approach
 
-We will use the original training set (variable *training_loaded* in our R code) as a training and test set (70% - 30% split) in order to do cross-validation estimate our models' out of sample error. The original testing set (variable *training_loaded* in our R code) doesn't have the *classe* available and for that reason cannot be used for as a test set for our model. We will only predict for that set in the end, using our final model, in order to submit the results.
+We will use the original training set (variable *training_loaded* in our R code) as a training and test set (70% - 30% split) in order to do cross-validation to estimate our models' out of sample error. The original testing set (variable *training_loaded* in our R code) doesn't have the *classe* available and for that reason cannot be used as a test set for our model. We will only predict for that set in the end, using our final model, in order to submit the results.
 
 ``` {r}
 intrain <- createDataPartition(training$classe, p=0.7, list=FALSE)
@@ -63,38 +64,22 @@ train <- training[intrain,]
 test <- training[-intrain,]
 ```
 
-We will try four Random Forest models with different settings for *ntree* and *mtry*. The code below creates the models.
+### Model Implementation and Cross Validation
+
+We will try four Random Forest models with different settings for *ntree* and *mtry*. While the Random Forest models will give us an Out Of Bag error estimation, we will also use them to predict *classe* for our test data set and then calculate the confusion matrix and the test (Out of Sample) error. This cross-validation technique makes sure we avoid choosing a model that has overfitted. The randomForest() function enables us to create the model and run it for test and get all the results in a simple call:
 
 ``` {r}
-model_rf1 <- randomForest(classe ~ ., data=train, ntree=100, mtry=7)
-model_rf2 <- randomForest(classe ~ ., data=train, ntree=1000, mtry=7)
-model_rf3 <- randomForest(classe ~ ., data=train, ntree=100, mtry=14)
-model_rf4 <- randomForest(classe ~ ., data=train, ntree=1000, mtry=14)
+model_rf1 <- randomForest(classe ~ ., data=train, xtest=test[,-53], ytest=test[,53], ntree=100, mtry=7, keep.forest=TRUE); model_rf1
+model_rf2 <- randomForest(classe ~ ., data=train, xtest=test[,-53], ytest=test[,53], ntree=100, mtry=14, keep.forest=TRUE); model_rf2
+model_rf3 <- randomForest(classe ~ ., data=train, xtest=test[,-53], ytest=test[,53], ntree=500, mtry=7, keep.forest=TRUE); model_rf3
+model_rf4 <- randomForest(classe ~ ., data=train, xtest=test[,-53], ytest=test[,53], ntree=500, mtry=14, keep.forest=TRUE); model_rf4
 ```
 
-# Out of Sample Error Cross Validation
-
-While the Random Forest models have already given us an error estimation, we will also use them to predict *classe* for our test data set and then calculate the confusion matrix. This cross-validation technique makes sure we avoid choosing a model that has overfitted.
-
-``` {r, cache=TRUE}
-test_predictions <- predict(model_rf1, newdata=test)
-confusionMatrix(test_predictions, test$classe)
-
-test_predictions <- predict(model_rf2, newdata=test)
-confusionMatrix(test_predictions, test$classe)
-
-test_predictions <- predict(model_rf3, newdata=test)
-confusionMatrix(test_predictions, test$classe)
-
-test_predictions <- predict(model_rf4, newdata=test)
-confusionMatrix(test_predictions, test$classe)
-```
-
-As we can see from the above we will choose model #1 as it has the highest accuracy.
+As we can see from the above we will choose **model #2** as it has the lowest test error.
 
 ### Final Predictions on the Evaluation Set
 
-Now that we have selected our model (the Random Forest one) and it performs well on the test set (accuracy of `r `) we will apply that model to the evaluation set. We will also create one file for each prediction we need to make from that set (20 in total). The code below does that and also shows on screen the 20 predictions. We uploaded the created files to Coursera and got 20/20 correct.
+Now that we have selected our model and it performs well on the test set we will apply that model to the evaluation set. We will also create one file for each prediction we need to make from that set (20 in total). The code below does that and also shows on screen the 20 predictions. We uploaded the created files to Coursera and got 20/20 correct.
 
 ```{r}
 pml_write_files = function(x) {
@@ -105,7 +90,7 @@ pml_write_files = function(x) {
   }
 }
 
-predictions <- predict(model_rf1, newdata=evaluation); predictions
+predictions <- predict(model_rf2, newdata=evaluation); predictions
 setwd("~/Dropbox/Projects/Learning/8.\ Practical\ Machine\ Learning/Exercises/Project/Answers\ Submitted")
 pml_write_files(as.character(predictions))
 ```
